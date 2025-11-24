@@ -1,0 +1,7 @@
+<resources>
+  <string name="app_name">LifeSync Games</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
+  <string name="accessibility_service_description">LifeSync Games necesita acceso para detectar qué aplicaciones estás usando y calcular puntos según tu uso. Este servicio solo monitorea cambios de aplicación y no accede a contenido personal.</string>
+  <string name="expo_system_ui_user_interface_style" translatable="false">light</string>
+</resources>

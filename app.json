@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "LifeSync Games",
+    "slug": "lifesync-games-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lifesync.games"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.lifesync.games",
+      "permissions": [
+        "HIGH_SAMPLING_RATE_SENSORS",
+        "PACKAGE_USAGE_STATS",
+        "BIND_ACCESSIBILITY_SERVICE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    }
+  }
+}
+

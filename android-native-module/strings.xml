@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">LifeSync Games necesita acceso para detectar qué aplicaciones estás usando y calcular puntos según tu uso. Este servicio solo monitorea cambios de aplicación y no accede a contenido personal.</string>
+</resources>
