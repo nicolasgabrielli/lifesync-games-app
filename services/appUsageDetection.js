@@ -4,10 +4,27 @@
  */
 import { Platform, Linking, Alert, NativeModules, NativeEventEmitter, DeviceEventEmitter } from 'react-native';
 
-const { AppUsage } = NativeModules || {};
-// Usar DeviceEventEmitter para eventos del servicio de accesibilidad
-// y NativeEventEmitter para eventos del módulo nativo
-const appUsageEmitter = AppUsage ? new NativeEventEmitter(AppUsage) : DeviceEventEmitter;
+// Cargar módulo nativo de forma segura
+let AppUsage = null;
+let appUsageEmitter = DeviceEventEmitter;
+
+try {
+  if (NativeModules && NativeModules.AppUsage) {
+    AppUsage = NativeModules.AppUsage;
+    try {
+      appUsageEmitter = new NativeEventEmitter(AppUsage);
+    } catch (error) {
+      console.warn('[AppUsage] No se pudo crear NativeEventEmitter, usando DeviceEventEmitter:', error.message);
+      appUsageEmitter = DeviceEventEmitter;
+    }
+  } else {
+    console.log('[AppUsage] Módulo nativo AppUsage no disponible');
+  }
+} catch (error) {
+  console.error('[AppUsage] Error al cargar módulo nativo:', error);
+  // Continuar sin módulo nativo, usar DeviceEventEmitter
+  appUsageEmitter = DeviceEventEmitter;
+}
 
 // Variable para almacenar la app actual detectada
 let currentAppPackage = null;

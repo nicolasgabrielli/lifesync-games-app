@@ -1,3 +1,4 @@
+// Importar gesture-handler PRIMERO, antes que cualquier otra cosa
 import 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -6,13 +7,14 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet, Platform, AppState } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import HomeScreen from './screens/HomeScreen';
 import SensorsScreen from './screens/SensorsScreen';
 import SensorDetailScreen from './screens/SensorDetailScreen';
 import LoginScreen from './screens/LoginScreen';
+import ErrorBoundary from './components/ErrorBoundary';
 import { initializeSensors } from './config/sensors';
 import { getSensorPoints } from './services/sensorStorage';
 import { sensorManager } from './services/sensorManager';
@@ -58,18 +60,57 @@ const theme = {
 };
 
 function AppNavigator() {
-  const { isAuthenticated, isLoading, userPoints } = useAuth();
-  const [sensors, setSensors] = useState(initializeSensors());
+  let authContext;
+  try {
+    authContext = useAuth();
+  } catch (error) {
+    console.error('[App] Error al obtener contexto de autenticación:', error);
+    // Retornar pantalla de error si no se puede obtener el contexto
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#ff6b35" />
+      </View>
+    );
+  }
+  
+  const { isAuthenticated, isLoading, userPoints } = authContext;
+  const [sensors, setSensors] = useState(() => {
+    try {
+      return initializeSensors();
+    } catch (error) {
+      console.error('[App] Error al inicializar sensores:', error);
+      return []; // Retornar array vacío si hay error
+    }
+  });
   const insets = useSafeAreaInsets();
   const appState = useRef(AppState.currentState);
 
   // Inicializar servicio global de sensores y cargar puntos guardados
   useEffect(() => {
     const initialize = async () => {
-      // Inicializar el servicio global de sensores
-      await sensorManager.initialize();
-      // Cargar puntos guardados
-      await loadSensorPoints();
+      console.log('[App] Iniciando inicialización de sensores...');
+      try {
+        // Inicializar el servicio global de sensores con timeout
+        const initPromise = sensorManager.initialize();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('SensorManager initialization timeout')), 5000)
+        );
+        
+        await Promise.race([initPromise, timeoutPromise]);
+        console.log('[App] SensorManager inicializado');
+        
+        // Cargar puntos guardados con timeout
+        const loadPointsPromise = loadSensorPoints();
+        const loadTimeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Load sensor points timeout')), 3000)
+        );
+        
+        await Promise.race([loadPointsPromise, loadTimeoutPromise]);
+        console.log('[App] Puntos de sensores cargados');
+      } catch (error) {
+        console.error('[App] Error al inicializar aplicación:', error);
+        // No lanzar el error, solo registrarlo para que la app pueda seguir funcionando
+      }
     };
     initialize();
   }, []);
@@ -94,26 +135,49 @@ function AppNavigator() {
     try {
       const savedPoints = await getSensorPoints();
       setSensors(prevSensors => 
-        prevSensors.map(sensor => ({
-          ...sensor,
-          lastPoints: savedPoints[sensor.id]?.points || 0,
-          lastUpdate: savedPoints[sensor.id]?.lastUpdate 
-            ? new Date(savedPoints[sensor.id].lastUpdate).toLocaleString('es-ES')
-            : 'Nunca',
-        }))
+        prevSensors.map(sensor => {
+          try {
+            const sensorData = savedPoints[sensor.id];
+            let lastUpdate = 'Nunca';
+            
+            if (sensorData?.lastUpdate) {
+              try {
+                const date = new Date(sensorData.lastUpdate);
+                if (!isNaN(date.getTime())) {
+                  lastUpdate = date.toLocaleString('es-ES');
+                }
+              } catch (dateError) {
+                console.warn(`[App] Error al parsear fecha para sensor ${sensor.id}:`, dateError);
+              }
+            }
+            
+            return {
+              ...sensor,
+              lastPoints: sensorData?.points || 0,
+              lastUpdate,
+            };
+          } catch (sensorError) {
+            console.error(`[App] Error al procesar sensor ${sensor.id}:`, sensorError);
+            return sensor; // Retornar sensor sin cambios si hay error
+          }
+        })
       );
     } catch (error) {
       console.error('[LifeSync] Error al cargar puntos de sensores:', error);
+      // No lanzar el error, permitir que la app continúe con valores por defecto
     }
   };
 
   if (isLoading) {
+    console.log('[App] Mostrando pantalla de carga...');
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#ff6b35" />
       </View>
     );
   }
+  
+  console.log('[App] isLoading = false, isAuthenticated =', isAuthenticated);
 
   if (!isAuthenticated) {
     return <LoginScreen />;
@@ -133,7 +197,12 @@ function AppNavigator() {
   const tabBarHeight = baseHeight + tabBarPaddingBottom;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      onError={(error) => {
+        console.error('[App] Error de navegación:', error);
+        // No lanzar el error, solo registrarlo
+      }}
+    >
       <Tab.Navigator
         initialRouteName="Home"
         screenOptions={{
@@ -198,12 +267,16 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <PaperProvider theme={theme}>
-      <StatusBar style="light" />
-      <AuthProvider>
-        <AppNavigator />
-      </AuthProvider>
-    </PaperProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <PaperProvider theme={theme}>
+          <StatusBar style="light" />
+          <AuthProvider>
+            <AppNavigator />
+          </AuthProvider>
+        </PaperProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -23,8 +23,8 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              // Agregar módulo nativo para detección de apps
-              add(AppUsagePackage())
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
@@ -46,7 +46,17 @@ class MainApplication : Application(), ReactApplication {
       ReleaseLevel.STABLE
     }
     loadReactNative(this)
-    ApplicationLifecycleDispatcher.onApplicationCreate(this)
+    try {
+      ApplicationLifecycleDispatcher.onApplicationCreate(this)
+    } catch (e: IllegalStateException) {
+      // Evitar crash si DevLauncherController ya está inicializado
+      // Esto puede pasar si la app se reinicia sin limpiar el proceso
+      android.util.Log.w("MainApplication", "ApplicationLifecycleDispatcher ya inicializado: ${e.message}")
+    } catch (e: Exception) {
+      // Capturar cualquier otro error durante la inicialización del ciclo de vida
+      // Esto previene crashes por problemas con módulos de Expo
+      android.util.Log.e("MainApplication", "Error al inicializar ApplicationLifecycleDispatcher: ${e.message}", e)
+    }
   }
 
   override fun onConfigurationChanged(newConfig: Configuration) {

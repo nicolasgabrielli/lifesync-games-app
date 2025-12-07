@@ -18,25 +18,6 @@ allprojects {
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
   }
-  
-  // Configurar JVM target para todos los módulos
-  afterEvaluate { project ->
-    if (project.hasProperty('android')) {
-      android {
-        compileOptions {
-          sourceCompatibility JavaVersion.VERSION_17
-          targetCompatibility JavaVersion.VERSION_17
-        }
-      }
-    }
-    
-    // Configurar Kotlin JVM target
-    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-      kotlinOptions {
-        jvmTarget = "17"
-      }
-    }
-  }
 }
 
 apply plugin: "expo-root-project"

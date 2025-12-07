@@ -22,7 +22,24 @@ export const AuthProvider = ({ children }) => {
 
   // Cargar credenciales guardadas al iniciar
   useEffect(() => {
-    loadStoredCredentials();
+    let isMounted = true;
+    
+    // Timeout de seguridad: si después de 3 segundos no ha terminado, mostrar login
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        console.warn('[LifeSync] Timeout de seguridad: mostrando pantalla de login');
+        setIsLoading(false);
+      }
+    }, 3000);
+    
+    loadStoredCredentials().finally(() => {
+      clearTimeout(safetyTimeout);
+    });
+    
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   // Cargar puntos cuando el usuario está autenticado
@@ -33,28 +50,59 @@ export const AuthProvider = ({ children }) => {
   }, [isAuthenticated, userId]);
 
   const loadStoredCredentials = async () => {
+    console.log('[LifeSync] Iniciando carga de credenciales...');
+    
     try {
       const storedCredentials = await AsyncStorage.getItem(CREDENTIALS_KEY);
       const storedUserId = await AsyncStorage.getItem(USER_ID_KEY);
       
+      console.log('[LifeSync] Credenciales encontradas:', !!storedCredentials, 'UserId:', !!storedUserId);
+      
       if (storedCredentials && storedUserId) {
-        const { username: storedUsername, password } = JSON.parse(storedCredentials);
-        
-        // Intentar login automático
-        const result = await apiLogin(storedUsername, password);
-        
-        if (result.success) {
-          setUsername(storedUsername);
-          setUserId(result.userId);
-          setIsAuthenticated(true);
-        } else {
-          // Si falla, limpiar credenciales
+        try {
+          const parsedCredentials = JSON.parse(storedCredentials);
+          const { username: storedUsername, password } = parsedCredentials;
+          
+          if (!storedUsername || !password) {
+            console.log('[LifeSync] Credenciales inválidas, limpiando...');
+            // Credenciales inválidas, limpiar
+            await AsyncStorage.multiRemove([CREDENTIALS_KEY, USER_ID_KEY]);
+            return;
+          }
+          
+          console.log('[LifeSync] Intentando login automático para:', storedUsername);
+          // Intentar login automático con timeout
+          const loginPromise = apiLogin(storedUsername, password);
+          const timeoutLogin = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Login timeout')), 8000)
+          );
+          
+          const result = await Promise.race([loginPromise, timeoutLogin]);
+          
+          if (result && result.success) {
+            console.log('[LifeSync] Login automático exitoso');
+            setUsername(storedUsername);
+            setUserId(result.userId);
+            setIsAuthenticated(true);
+          } else {
+            console.log('[LifeSync] Login automático falló, limpiando credenciales');
+            // Si falla, limpiar credenciales
+            await AsyncStorage.multiRemove([CREDENTIALS_KEY, USER_ID_KEY]);
+          }
+        } catch (parseError) {
+          console.error('[LifeSync] Error al parsear credenciales guardadas:', parseError);
+          // Limpiar credenciales corruptas
           await AsyncStorage.multiRemove([CREDENTIALS_KEY, USER_ID_KEY]);
         }
+      } else {
+        console.log('[LifeSync] No hay credenciales guardadas');
       }
     } catch (error) {
       console.error('[LifeSync] Error al cargar credenciales:', error);
+      // No lanzar el error, permitir que la app continúe sin autenticación
     } finally {
+      // Asegurar que isLoading siempre se ponga en false
+      console.log('[LifeSync] Finalizando carga de credenciales, isLoading = false');
       setIsLoading(false);
     }
   };
@@ -64,17 +112,18 @@ export const AuthProvider = ({ children }) => {
     
     try {
       const result = await getUserPoints(userId);
-      if (result.success && result.points) {
+      if (result && result.success && result.points) {
         setUserPoints((prev) => ({
-          social: result.points.social ?? prev.social,
-          fisica: result.points.fisica ?? prev.fisica,
-          afectivo: result.points.afectivo ?? prev.afectivo,
-          cognitivo: result.points.cognitivo ?? prev.cognitivo,
-          linguistico: result.points.linguistico ?? prev.linguistico,
+          social: result.points.social ?? prev.social ?? 0,
+          fisica: result.points.fisica ?? prev.fisica ?? 0,
+          afectivo: result.points.afectivo ?? prev.afectivo ?? 0,
+          cognitivo: result.points.cognitivo ?? prev.cognitivo ?? 0,
+          linguistico: result.points.linguistico ?? prev.linguistico ?? 0,
         }));
       }
     } catch (error) {
       console.error('[LifeSync] Error al cargar puntos:', error);
+      // No lanzar el error, mantener puntos actuales o valores por defecto
     }
   };
 

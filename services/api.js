@@ -22,27 +22,44 @@ export const login = async (username, password) => {
     }
 
     const url = `${API_BASE_URL.USER}player/${username}/${password}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      return { success: false, error: 'Credenciales inválidas' };
-    }
-
-    const body = await response.text();
     
-    // Extraer el ID del usuario del body (similar al mod de Valheim)
-    const userId = body.trim().replace(/\D/g, '');
+    // Agregar timeout a la petición fetch
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos
     
-    if (!userId || userId === '0') {
-      return { success: false, error: 'Credenciales inválidas' };
-    }
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
 
-    return { success: true, userId };
+      if (!response.ok) {
+        return { success: false, error: 'Credenciales inválidas' };
+      }
+
+      const body = await response.text();
+      
+      // Extraer el ID del usuario del body (similar al mod de Valheim)
+      const userId = body.trim().replace(/\D/g, '');
+      
+      if (!userId || userId === '0') {
+        return { success: false, error: 'Credenciales inválidas' };
+      }
+
+      return { success: true, userId };
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        console.error('[LifeSync][API] Timeout en login');
+        return { success: false, error: 'Timeout. Verifica tu conexión a internet.' };
+      }
+      throw fetchError;
+    }
   } catch (error) {
     console.error('[LifeSync][API] Error en login:', error);
     return { success: false, error: 'Error de conexión. Verifica tu internet.' };
