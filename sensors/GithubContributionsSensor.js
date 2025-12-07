@@ -16,7 +16,7 @@ export class GithubContributionsSensor {
     this.repos = 0;
     this.lastCommit = 'Nunca';
     this.updateCount = 0;
-    this.lastPointsAdded = 0;
+    this.lastCommitsProcessed = 0; // Número de commits ya procesados (para evitar duplicados)
     this.isConfigured = false;
   }
 
@@ -84,6 +84,7 @@ export class GithubContributionsSensor {
       // Obtener contribuciones del día actual
       const contributions = await githubService.getTodayContributions(username);
       
+      const previousCommits = this.commits;
       this.commits = contributions.commits;
       this.repos = contributions.repos;
       this.lastCommit = contributions.lastCommit;
@@ -99,13 +100,26 @@ export class GithubContributionsSensor {
       
       // Calcular puntos: 2 puntos por cada commit
       // Solo agregar puntos si hay commits nuevos (evitar duplicados)
-      const totalPoints = this.commits * 2;
-      const pointsToAdd = totalPoints - this.lastPointsAdded;
+      // Comparar con los commits ya procesados, no con los puntos
+      const newCommits = this.commits - this.lastCommitsProcessed;
       
-      if (pointsToAdd > 0) {
-        console.log(`[Github] Actualización #${this.updateCount}: ${pointsToAdd} puntos (${this.commits} commits)`);
+      if (newCommits > 0) {
+        const pointsToAdd = newCommits * 2; // 2 puntos por commit nuevo
+        console.log(`[Github] Actualización #${this.updateCount}: ${newCommits} commits nuevos = ${pointsToAdd} puntos (Total commits hoy: ${this.commits})`);
         this.onPointsUpdate(pointsToAdd);
-        this.lastPointsAdded = totalPoints;
+        this.lastCommitsProcessed = this.commits;
+      } else if (this.commits !== previousCommits) {
+        // Si los commits cambiaron pero no hay commits nuevos, podría ser un reset
+        // Esto puede pasar si el día cambió o si se reinició el sensor
+        console.log(`[Github] Commits detectados: ${this.commits} (ya procesados: ${this.lastCommitsProcessed})`);
+        // Si los commits actuales son mayores que los procesados, hay commits nuevos
+        if (this.commits > this.lastCommitsProcessed) {
+          const newCommits = this.commits - this.lastCommitsProcessed;
+          const pointsToAdd = newCommits * 2;
+          console.log(`[Github] Detectados ${newCommits} commits nuevos después de reinicio: ${pointsToAdd} puntos`);
+          this.onPointsUpdate(pointsToAdd);
+          this.lastCommitsProcessed = this.commits;
+        }
       }
     } catch (error) {
       console.error('[Github] Error al actualizar contribuciones:', error);
@@ -157,7 +171,7 @@ export class GithubContributionsSensor {
     this.repos = 0;
     this.lastCommit = 'Nunca';
     this.updateCount = 0;
-    this.lastPointsAdded = 0;
+    this.lastCommitsProcessed = 0;
   }
 
   getStats() {

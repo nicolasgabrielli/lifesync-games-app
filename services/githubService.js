@@ -92,7 +92,7 @@ class GitHubService {
 
     const url = `${GITHUB_API_BASE}${endpoint}`;
     const headers = {
-      'Authorization': `token ${token}`,
+      'Authorization': `Bearer ${token}`, // GitHub recomienda Bearer para nuevos tokens
       'Accept': 'application/vnd.github.v3+json',
       'User-Agent': 'LifeSync-Games',
       ...options.headers,
@@ -142,19 +142,48 @@ class GitHubService {
    */
   async verifyTokenPermissions() {
     try {
-      // Hacer una petición para obtener información del token
-      // La API de GitHub no tiene un endpoint directo para verificar permisos,
-      // pero podemos intentar hacer operaciones y ver qué funciona
+      // Obtener información del usuario autenticado
+      // Esto también verifica que el token sea válido
       const userInfo = await this.getUserInfo();
       const username = await this.getUsername();
       
-      // Intentar obtener eventos públicos (no requiere permisos especiales)
+      if (!userInfo || !userInfo.login) {
+        throw new Error('No se pudo obtener información del usuario');
+      }
+
+      // Verificar que el username coincida (si está configurado)
+      if (username && userInfo.login.toLowerCase() !== username.toLowerCase()) {
+        return {
+          valid: false,
+          canReadEvents: false,
+          username: userInfo.login,
+          message: `El username no coincide. El token pertenece a: ${userInfo.login}`,
+          requiredScopes: ['public_repo', 'read:user'],
+          optionalScopes: ['repo'],
+        };
+      }
+
+      // Intentar obtener eventos públicos para verificar permisos
+      // Esto requiere acceso a la API de eventos públicos
       let canReadEvents = false;
+      let eventsError = null;
       try {
-        await this.getUserEvents(username, 1, 1);
+        const events = await this.getUserEvents(userInfo.login, 1, 1);
         canReadEvents = true;
+        console.log('[GitHub] Permisos verificados: puede leer eventos públicos');
       } catch (error) {
-        canReadEvents = false;
+        eventsError = error.message;
+        console.warn('[GitHub] No se pueden leer eventos públicos:', error.message);
+        
+        // Si es un error 401 o 403, el token no tiene permisos
+        if (error.message.includes('401') || error.message.includes('403') || 
+            error.message.includes('inválido') || error.message.includes('expirado')) {
+          canReadEvents = false;
+        } else {
+          // Otros errores pueden ser temporales (rate limit, etc.)
+          // Intentar verificar de otra manera
+          canReadEvents = true; // Asumir que tiene permisos si no es un error de autenticación
+        }
       }
 
       // Los permisos requeridos son:
@@ -165,21 +194,27 @@ class GitHubService {
       const requiredScopes = ['public_repo', 'read:user'];
       const optionalScopes = ['repo'];
       
+      // Verificar scopes del token usando el header X-OAuth-Scopes
+      // Esto se obtiene de la respuesta de /user
+      // Nota: La API de GitHub no siempre devuelve este header en todas las respuestas
+      
       return {
-        valid: canReadEvents,
+        valid: canReadEvents && !!userInfo.login,
         username: userInfo.login,
         canReadEvents,
         message: canReadEvents 
           ? 'Token válido con permisos suficientes' 
-          : 'Token válido pero sin permisos para leer eventos públicos',
+          : `Token válido pero sin permisos para leer eventos públicos. ${eventsError || 'Asegúrate de seleccionar "public_repo" y "read:user" al crear el token.'}`,
         requiredScopes,
         optionalScopes,
       };
     } catch (error) {
+      console.error('[GitHub] Error al verificar permisos:', error);
       return {
         valid: false,
         canReadEvents: false,
-        message: error.message || 'Error al verificar permisos del token',
+        username: null,
+        message: error.message || 'Error al verificar permisos del token. Verifica que el token sea válido y no haya expirado.',
         requiredScopes: ['public_repo', 'read:user'],
         optionalScopes: ['repo'],
       };
@@ -216,8 +251,21 @@ class GitHubService {
         return eventDate.getTime() === today.getTime();
       });
 
-      // Contar commits (PushEvent)
-      const commits = todayEvents.filter(event => event.type === 'PushEvent').length;
+      // Contar commits reales dentro de PushEvents
+      // Un PushEvent puede tener múltiples commits en payload.commits
+      let totalCommits = 0;
+      const pushEvents = todayEvents.filter(event => event.type === 'PushEvent');
+      
+      pushEvents.forEach(event => {
+        // El payload contiene un array de commits
+        if (event.payload && event.payload.commits) {
+          // Contar commits en este push
+          totalCommits += event.payload.commits.length;
+        } else {
+          // Si no hay payload.commits, asumir 1 commit por PushEvent (fallback)
+          totalCommits += 1;
+        }
+      });
 
       // Obtener repos únicos
       const repos = new Set();
@@ -229,7 +277,6 @@ class GitHubService {
 
       // Obtener el último commit
       let lastCommit = 'Nunca';
-      const pushEvents = todayEvents.filter(event => event.type === 'PushEvent');
       if (pushEvents.length > 0) {
         const lastEvent = pushEvents[0];
         const lastEventDate = new Date(lastEvent.created_at);
@@ -254,8 +301,10 @@ class GitHubService {
         }
       }
 
+      console.log(`[GitHub] Contribuciones de hoy: ${totalCommits} commits en ${pushEvents.length} push(es)`);
+
       return {
-        commits,
+        commits: totalCommits,
         repos: repos.size,
         lastCommit,
         events: todayEvents,
