@@ -98,13 +98,13 @@ export class GithubContributionsSensor {
       
       this.onDataUpdate(data);
       
-      // Calcular puntos: 2 puntos por cada commit
+      // Calcular puntos: 1 punto por cada commit
       // Solo agregar puntos si hay commits nuevos (evitar duplicados)
       // Comparar con los commits ya procesados, no con los puntos
       const newCommits = this.commits - this.lastCommitsProcessed;
       
       if (newCommits > 0) {
-        const pointsToAdd = newCommits * 2; // 2 puntos por commit nuevo
+        const pointsToAdd = newCommits * 1; // 1 punto por commit nuevo
         console.log(`[Github] Actualización #${this.updateCount}: ${newCommits} commits nuevos = ${pointsToAdd} puntos (Total commits hoy: ${this.commits})`);
         this.onPointsUpdate(pointsToAdd);
         this.lastCommitsProcessed = this.commits;
@@ -115,7 +115,7 @@ export class GithubContributionsSensor {
         // Si los commits actuales son mayores que los procesados, hay commits nuevos
         if (this.commits > this.lastCommitsProcessed) {
           const newCommits = this.commits - this.lastCommitsProcessed;
-          const pointsToAdd = newCommits * 2;
+          const pointsToAdd = newCommits * 1;
           console.log(`[Github] Detectados ${newCommits} commits nuevos después de reinicio: ${pointsToAdd} puntos`);
           this.onPointsUpdate(pointsToAdd);
           this.lastCommitsProcessed = this.commits;
